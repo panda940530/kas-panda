@@ -1,0 +1,8 @@
+header:
+  version: 14
+
+local_conf_header:
+  paths: |
+    DL_DIR = "/downloads"
+    SSTATE_DIR = "/sstate"
+    BB_HASHSERVE_DB_DIR = "/sstate"

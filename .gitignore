@@ -1,0 +1,22 @@
+# ---- kas 自己 clone 的 repo ----
+# panda.yml 記了 URL、panda.lock.yml 記了 commit，任何人 kas build 都能還原。
+# 而且它們各自帶著 .git/，硬進版控會變成半殘的 submodule。
+/bitbake/
+/openembedded-core/
+/meta-yocto/
+/meta-raspberrypi/
+/meta-panda/
+
+# ---- build 產出 ----
+# 可重新產生的東西不進版控。這兩個目錄合計數十 GB。
+/build/
+/build-container/
+
+# ---- 本機環境 ----
+# 內含本機絕對路徑，必須 source 不能執行。CI 上的對應物是 CI/CD variables。
+/env-container.sh
+
+# ---- 測試/筆記文件，暫不進版控 ----
+/docs/
+
+/CLAUDE.md

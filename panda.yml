@@ -1,0 +1,44 @@
+header:
+  version: 14
+
+machine: raspberrypi4-64
+distro: panda
+target: core-image-base
+
+repos:
+  bitbake:
+    url: https://git.openembedded.org/bitbake
+    branch: master
+    layers:
+      .: disabled
+
+  openembedded-core:
+    url: https://git.openembedded.org/openembedded-core
+    branch: master
+    layers:
+      meta:
+
+  meta-yocto:
+    url: https://git.yoctoproject.org/meta-yocto
+    branch: master
+    layers:
+      meta-poky:
+      meta-yocto-bsp:
+
+  meta-raspberrypi:
+    url: https://github.com/agherzan/meta-raspberrypi
+    branch: master
+  
+  meta-panda:
+    url: https://github.com/panda940530/meta-panda.git
+    branch: master
+    commit: b282bad8d05c73243837faf4584bea39db3bbbcf
+  
+local_conf_header:
+  paths: |
+    DL_DIR = "/home/panda/bitbake-builds/.bitbake-setup-downloads"
+    SSTATE_DIR = "/home/panda/bitbake-builds/.sstate-cache"
+    BB_HASHSERVE_DB_DIR = "/home/panda/bitbake-builds/.sstate-cache"
+  devel: |
+    EXTRA_IMAGE_FEATURES += "allow-empty-password empty-root-password allow-root-login"
+    EXTRA_IMAGE_FEATURES += "ssh-server-dropbear"
