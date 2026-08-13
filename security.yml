@@ -1,0 +1,6 @@
+header:
+  version: 14
+
+local_conf_header:
+  security: |
+    OE_FRAGMENTS += "core/yocto/sbom-cve-check"
