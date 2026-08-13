@@ -4,3 +4,9 @@ header:
 buildtools:
   version: "5.3.2"
   sha256sum: "6c1119f62653006b4049ad01c9ce507acc67e4d80c466e4338d587eb3e65f9f3"
+
+local_conf_header:
+  paths: |
+    DL_DIR = "/home/panda/bitbake-builds/.bitbake-setup-downloads"
+    SSTATE_DIR = "/home/panda/bitbake-builds/.sstate-cache"
+    BB_HASHSERVE_DB_DIR = "/home/panda/bitbake-builds/.sstate-cache"

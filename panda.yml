@@ -35,10 +35,6 @@ repos:
     commit: b282bad8d05c73243837faf4584bea39db3bbbcf
   
 local_conf_header:
-  paths: |
-    DL_DIR = "/home/panda/bitbake-builds/.bitbake-setup-downloads"
-    SSTATE_DIR = "/home/panda/bitbake-builds/.sstate-cache"
-    BB_HASHSERVE_DB_DIR = "/home/panda/bitbake-builds/.sstate-cache"
   devel: |
     EXTRA_IMAGE_FEATURES += "allow-empty-password empty-root-password allow-root-login"
     EXTRA_IMAGE_FEATURES += "ssh-server-dropbear"
