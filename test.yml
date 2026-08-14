@@ -1,0 +1,26 @@
+header:
+  version: 14
+
+repos:
+  # 本 repo（kas 檔案所在處），只用來提供 patch，不當 layer 加入
+  kas-panda:
+    layers:
+      .: disabled
+
+  # meta-raspberrypi 的 parselogs_rpi.py 還在用 oe-core 已移除的 API
+  # （ignore_errors / common_errors，被 7a04063f7cf「load ignores from disk」拿掉）
+  # 未修補的話 oeqa 的 test discovery 一定 ImportError，testimage 直接失敗。
+  # 上游尚未修正（該檔最後一次改動是 5.10 核心時代）。
+  meta-raspberrypi:
+    patches:
+      fix-parselogs:
+        repo: kas-panda
+        path: patches/meta-raspberrypi/0001-parselogs-rpi-drop-removed-oeqa-api.patch
+
+local_conf_header:
+  testimage: |
+    IMAGE_CLASSES += "testimage"
+    TEST_TARGET = "simpleremote"
+    TEST_TARGET_IP = "192.168.236.34"
+    TEST_SERVER_IP = "172.24.73.233"
+    TEST_SUITES = "ping ssh scp date df parselogs"

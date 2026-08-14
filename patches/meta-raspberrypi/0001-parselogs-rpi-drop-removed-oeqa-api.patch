@@ -1,0 +1,17 @@
+diff --git a/lib/oeqa/runtime/cases/parselogs_rpi.py b/lib/oeqa/runtime/cases/parselogs_rpi.py
+index 49226ae..6c22355 100644
+--- a/lib/oeqa/runtime/cases/parselogs_rpi.py
++++ b/lib/oeqa/runtime/cases/parselogs_rpi.py
+@@ -1,12 +1,4 @@
+ from oeqa.runtime.cases.parselogs import *
+ 
+-rpi_errors = [
+-]
+-
+-ignore_errors['raspberrypi4'] = rpi_errors + common_errors
+-ignore_errors['raspberrypi4-64'] = rpi_errors + common_errors
+-ignore_errors['raspberrypi3'] = rpi_errors + common_errors
+-ignore_errors['raspberrypi3-64'] = rpi_errors + common_errors
+-
+ class ParseLogsTestRpi(ParseLogsTest):
+     pass
