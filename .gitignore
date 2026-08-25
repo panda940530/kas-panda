@@ -12,6 +12,10 @@
 /build/
 /build-container/
 
+# ---- 機密 ----
+# 絕對不能進版控。CICD_CT.pdf 第 5 頁 Source gate 的 secret scan 就是在擋這個。
+/.env
+
 # ---- 本機環境 ----
 # 內含本機絕對路徑，必須 source 不能執行。CI 上的對應物是 CI/CD variables。
 /env-container.sh
