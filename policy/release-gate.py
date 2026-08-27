@@ -173,6 +173,29 @@ def built_from():
     return used, log
 
 
+def patched_on_top(repo, declared, actual):
+    """actual 是不是「declared 加上疊在上面的 commit」。
+
+    kas 的 patches: 會把 patch 做成一顆 commit 疊在 pin 上，layer HEAD 因此不等於
+    宣告的 pin（例：meta-raspberrypi 的 "kas: fix-parselogs"）。這不是漂移 ——
+    宣告的東西都在，只是多了我們自己加的，而 patch 檔本身也在版控裡。
+
+    回傳多出來的 commit；不是祖先關係就回 None（那才是真的用了別的東西）。
+    """
+    path = os.path.join(REPO, repo)
+    if not os.path.isdir(os.path.join(path, ".git")):
+        return None
+    ok = subprocess.run(
+        ["git", "-C", path, "merge-base", "--is-ancestor", declared, actual],
+        capture_output=True)
+    if ok.returncode != 0:
+        return None
+    out = subprocess.run(
+        ["git", "-C", path, "log", "--oneline", f"{declared}..{actual}"],
+        capture_output=True, text=True)
+    return [l for l in out.stdout.splitlines() if l.strip()]
+
+
 def parse_gaps(raw, today):
     out = []
     for g in raw:
@@ -246,12 +269,19 @@ def main():
     prov = provenance()
     used, cooker_log = built_from()
     drift = []
+    patched = []
     if used:
         for repo, declared in prov["layers"].items():
             actual = used.get(repo)
-            if actual and declared.get("commit") and actual != declared["commit"]:
+            if not (actual and declared.get("commit")) or actual == declared["commit"]:
+                continue
+            extra = patched_on_top(repo, declared["commit"], actual)
+            if extra is None:
                 drift.append({"repo": repo, "declared": declared["commit"],
                               "built_from": actual})
+            else:
+                patched.append({"repo": repo, "base": declared["commit"],
+                                "head": actual, "commits": extra})
     # image 與 CVE 報告必須同一批：這兩者的對應關係是整份 manifest 的核心主張
     img_stamp = items["image"]["image_stamp"] if items["image"] else None
     cve_stamp = items["cve_report"]["image_stamp"] if items["cve_report"] else None
@@ -318,6 +348,7 @@ def main():
             "built_from": used,
             "cooker_log": os.path.relpath(cooker_log, REPO) if cooker_log else None,
             "pin_drift": drift,
+            "patched_layers": patched,
             "image_cve_same_batch": not batch_mismatch,
             "ct_layer_drift": ct_drift,
         },
@@ -357,6 +388,11 @@ def main():
                   f" 但 build 用的是 {d['built_from'][:12]}…")
     else:
         print("  ✅ 宣告的 pin 與 build 實際使用的 commit 一致")
+    for pl in patched:
+        print(f"  ✅ {pl['repo']}：宣告的 pin + kas patches "
+              f"（{pl['base'][:12]}… → {pl['head'][:12]}…）")
+        for c in pl["commits"]:
+            print(f"       {c}")
     print(f"  {'❌' if batch_mismatch else '✅'} image 與 CVE 報告"
           f"{'不是' if batch_mismatch else '是'}同一批建置")
     if ct_drift:
