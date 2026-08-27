@@ -1,0 +1,78 @@
+# Release gate 規則。依據 docs/CICD_CT.pdf 第 16、17 頁。
+# 證據分類的理由見 docs/NOTES.md §9。
+version: 1
+
+# 促銷頻道（PDF 第 16 頁 Promote nightly / RC channel）：
+#   BLOCK    必要證據缺漏，或 CVE / CT 沒過
+#   nightly  必要證據齊全，但仍有未關閉的缺口
+#   RC       必要證據齊全且缺口全部關閉
+#
+# 缺口不擋 nightly，只擋 RC —— 否則它會變成永遠亮著、沒人看的紅燈。
+
+# 缺一項就 BLOCK
+required:
+  - id: image
+    what: 可燒錄的 image 本體
+  - id: image_hash
+    what: image 的 SHA-256（PDF 第 17 頁 Block 條件之一）
+  - id: sbom
+    what: SPDX SBOM，image scope
+  - id: cve_verdict
+    what: cve-gate.py 的判定，必須是 PASS
+  - id: ct_report
+    what: testimage 結果，不得有 FAILED
+  - id: license_manifest
+    what: image 裡每個套件的授權清單
+  - id: source_provenance
+    what: 每個 layer 的 URL + commit，可重建這顆 image
+
+# 該做、還沒做。具名 + owner + 到期日；過期即 BLOCK。
+gaps:
+  - id: license-compliance-policy
+    what: INCOMPATIBLE_LICENSE 白/黑名單 + 可交付的 third-party notice
+    why: GPL/LGPL 隨產品附授權聲明是法律義務，不是選配。
+         Yocto 已產出 license.manifest，缺的是政策與整理。
+    owner: panda
+    expires: 2026-11-30
+
+  - id: secret-scan
+    what: Gitleaks 掃 kas-panda 與 meta-panda 的完整歷史，接 pre-commit + CI
+    why: PDF 第 6 頁 ZONE 1 明列。已有實例：.env 存 sudo 密碼、權限 0644、
+         原本未被 gitignore 排除。repo 現為 public，密碼一旦 push 就等同外洩。
+    owner: panda
+    expires: 2026-11-30
+
+  - id: port-baseline
+    what: 開放埠基準線 + hardening 檢查（空密碼、預設帳號、debug 介面）
+    why: PDF 第 17 頁 Post-build runtime evidence。CT gate 已有實機管道，
+         加兩個 testimage 測試即可，不需要新工具。
+    owner: panda
+    expires: 2026-11-30
+
+# 判定不看，但理由留著，避免日後被當成漏做
+deferred:
+  - id: sast
+    why: 自有程式碼幾乎為零（recipe + 兩支測試）。掃上游 74 個套件只會產出
+         另一份沒人處理的報告 —— 與 kernel 那 2345 筆 CVE 同一個結構。
+    revisit: 開始寫應用程式碼時
+
+  - id: firmware-scan
+    why: Binwalk / EMBA 是「拆開猜裡面有什麼」。我們有完整 SBOM，資訊重疊。
+    revisit: 需要驗證出貨 image 與 SBOM 是否一致時
+
+  - id: openvas
+    why: 需要獨立掃描主機，且目前被公司網路的 IP 衝突擋住（docs/BOARD.md §5）。
+         更根本的問題是現在的 image 是刻意不安全的測試變體，沒有掃描對象。
+    revisit: 測試變體與出貨變體分開之後
+
+not_applicable:
+  - id: factory-provisioning
+    why: 序號、裝置憑證、debug lock、雲端註冊都需要量產產線。
+         目前是手工燒錄單片開發板。TPM（SLB9670）硬體已驗證通過，
+         真要做時不是從零開始。
+
+platform_limitation:
+  - id: secure-boot
+    why: PDF 第 4、13、17 頁當成必要條件（甚至寫了 NXP 的 CST signing 術語），
+         但 CM4 沒有完整的 HAB/CST 信任鏈。這是做不出來，不是還沒做。
+    action: 需與提案方確認 —— 接受限制，或這條產品線最終換 SoC
