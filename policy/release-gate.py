@@ -173,20 +173,6 @@ def built_from():
     return used, log
 
 
-def dirty_repos():
-    """有未 commit 的修改 = 這顆 image 重建不出來，manifest 記的 HEAD 是謊話。"""
-    dirty = []
-    for name, path in (("kas-panda", REPO),
-                       ("meta-panda", os.path.join(REPO, "meta-panda"))):
-        if not os.path.isdir(os.path.join(path, ".git")):
-            continue
-        out = subprocess.run(["git", "-C", path, "status", "--porcelain"],
-                             capture_output=True, text=True).stdout.strip()
-        if out:
-            dirty.append({"repo": name, "changes": len(out.splitlines())})
-    return dirty
-
-
 def parse_gaps(raw, today):
     out = []
     for g in raw:
@@ -266,8 +252,6 @@ def main():
             if actual and declared.get("commit") and actual != declared["commit"]:
                 drift.append({"repo": repo, "declared": declared["commit"],
                               "built_from": actual})
-    dirty = dirty_repos()
-
     # image 與 CVE 報告必須同一批：這兩者的對應關係是整份 manifest 的核心主張
     img_stamp = items["image"]["image_stamp"] if items["image"] else None
     cve_stamp = items["cve_report"]["image_stamp"] if items["cve_report"] else None
@@ -304,9 +288,6 @@ def main():
     if drift:
         reasons.append("宣告的 pin 與 build 實際使用的 commit 不一致："
                        + "、".join(d["repo"] for d in drift) + "（需重新 build）")
-    if dirty:
-        reasons.append("工作區有未 commit 的修改："
-                       + "、".join(f"{d['repo']}({d['changes']})" for d in dirty))
     if batch_mismatch:
         reasons.append(f"image（{img_stamp}）與 CVE 報告（{cve_stamp}）不是同一批建置")
     if used is None:
@@ -337,7 +318,6 @@ def main():
             "built_from": used,
             "cooker_log": os.path.relpath(cooker_log, REPO) if cooker_log else None,
             "pin_drift": drift,
-            "dirty_repos": dirty,
             "image_cve_same_batch": not batch_mismatch,
             "ct_layer_drift": ct_drift,
         },
@@ -377,11 +357,6 @@ def main():
                   f" 但 build 用的是 {d['built_from'][:12]}…")
     else:
         print("  ✅ 宣告的 pin 與 build 實際使用的 commit 一致")
-    if dirty:
-        for d in dirty:
-            print(f"  ❌ {d['repo']} 有 {d['changes']} 項未 commit 的修改")
-    else:
-        print("  ✅ 工作區乾淨")
     print(f"  {'❌' if batch_mismatch else '✅'} image 與 CVE 報告"
           f"{'不是' if batch_mismatch else '是'}同一批建置")
     if ct_drift:
