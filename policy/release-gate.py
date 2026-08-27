@@ -103,7 +103,15 @@ def ct_summary(path):
     counts = {}
     for case in data[run].get("result", {}).values():
         counts[case.get("status")] = counts.get(case.get("status"), 0) + 1
-    return {"run": run, "counts": counts,
+    # configuration.LAYERS 記著那次測試所用的 layer commit —— 唯一能把
+    # 測試結果綁回某一顆 image 的欄位（時間戳綁不住，STARTTIME 是測試時間不是建置時間）
+    layers = {}
+    for layer, spec in (data[run].get("configuration", {})
+                        .get("LAYERS", {}) or {}).items():
+        repo = LAYER_TO_REPO.get(layer)
+        if repo and spec.get("commit"):
+            layers[repo] = spec["commit"]
+    return {"run": run, "counts": counts, "layers": layers,
             "passed": counts.get("PASSED", 0),
             "failed": counts.get("FAILED", 0) + counts.get("ERROR", 0)}
 
@@ -265,6 +273,17 @@ def main():
     cve_stamp = items["cve_report"]["image_stamp"] if items["cve_report"] else None
     batch_mismatch = bool(img_stamp and cve_stamp and img_stamp != cve_stamp)
 
+    # CT 結果是不是這顆 image 跑出來的。
+    # ⚠️ kas 的 patches: 會把 patch 做成一顆 commit 疊在 pin 上，layer HEAD 因此
+    #    不等於宣告的 pin —— 所以這裡比的是「CT 當時」對「image build 當時」，
+    #    兩邊都是實際值，不是宣告值。
+    ct_drift = []
+    if ct and used:
+        for repo, ct_commit in ct["layers"].items():
+            built = used.get(repo)
+            if built and built != ct_commit:
+                ct_drift.append({"repo": repo, "ct": ct_commit, "image": built})
+
     cve_ok = verdict is not None and verdict.get("verdict") == "PASS"
     ct_ok = ct is not None and ct["failed"] == 0
 
@@ -292,6 +311,10 @@ def main():
         reasons.append(f"image（{img_stamp}）與 CVE 報告（{cve_stamp}）不是同一批建置")
     if used is None:
         reasons.append("找不到 cooker log，無法確認證據對應哪份原始碼")
+    if ct_drift:
+        reasons.append("CT 結果不是這顆 image 跑出來的："
+                       + "、".join(d["repo"] for d in ct_drift)
+                       + "（用同一組 fragment 重跑 build + testimage）")
 
     if reasons:
         channel, code = "BLOCK", 1
@@ -316,6 +339,7 @@ def main():
             "pin_drift": drift,
             "dirty_repos": dirty,
             "image_cve_same_batch": not batch_mismatch,
+            "ct_layer_drift": ct_drift,
         },
         "evidence": items,
         "gates": {
@@ -360,6 +384,13 @@ def main():
         print("  ✅ 工作區乾淨")
     print(f"  {'❌' if batch_mismatch else '✅'} image 與 CVE 報告"
           f"{'不是' if batch_mismatch else '是'}同一批建置")
+    if ct_drift:
+        print("  ❌ CT 結果不是這顆 image 跑出來的：")
+        for d in ct_drift:
+            print(f"       {d['repo']}：CT 用 {d['ct'][:12]}…"
+                  f"　image 用 {d['image'][:12]}…")
+    elif ct:
+        print("  ✅ CT 結果對應這顆 image 的 layer 組合")
 
     if not manifest["same_build"]:
         print(f"\n⚠️  證據來自 {len(stamps)} 個不同的建置時間戳：{', '.join(stamps)}")

@@ -17,15 +17,18 @@ repos:
         repo: kas-panda
         path: patches/meta-raspberrypi/0001-parselogs-rpi-drop-removed-oeqa-api.patch
 
+# 只宣告要轉發哪些變數，不給預設值（kas: null = 有設才轉發）。
+# 值放本機的 .env，由 env-container.sh 讀出來。
+# 板子 IP 每次開機都會變，寫死的預設值幾乎永遠是錯的，而且會讓測試
+# 連進現在持有那個位址的別台機器 —— 該網段有 IP 衝突紀錄（docs/BOARD.md §5）。
+env:
+  TEST_TARGET_IP:
+  TEST_SERVER_IP:
+
 local_conf_header:
   testimage: |
     IMAGE_CLASSES += "testimage"
     TEST_TARGET = "simpleremote"
-    # ⚠️ DHCP 不再綁定 MAC，這個值每次開機都可能失效（見 docs/BOARD.md §5）
-    TEST_TARGET_IP = "192.168.236.42"
-    # 給板子反向連回主機用。WSL2 在 NAT 後面實際上連不到，
-    # 但 testimage.bbclass:140 沒填會 bb.fatal，所以必須有值
-    TEST_SERVER_IP = "172.24.73.233"
     # rtc_panda / tpm_panda 來自 meta-panda/lib/oeqa/runtime/cases/
     # ⚠️ 後綴 _panda 是為了避開 oe-core 既有的 rtc.py（模組名不能重複）
     TEST_SUITES = "ping ssh scp date df parselogs rtc_panda tpm_panda"
