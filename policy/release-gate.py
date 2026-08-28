@@ -28,8 +28,8 @@ DEFAULT_POLICY = os.path.join(REPO, "policy", "release-policy.yml")
 DEFAULT_OUT = os.path.join(DEPLOY, "release")
 CVE_GATE = os.path.join(REPO, "policy", "cve-gate.py")
 STAMP_RE = re.compile(r"(\d{14})")
-COOKER_LOG = os.path.join(REPO, "build-container", "tmp", "log", "cooker", "*",
-                          "console-latest.log")
+COOKER_LOGS = os.path.join(REPO, "build-container", "tmp", "log", "cooker", "*",
+                           "*.log")
 # bitbake 的 Build Configuration 用 layer 名，panda.yml 用 repo 名
 LAYER_TO_REPO = {
     "meta": "openembedded-core",
@@ -153,16 +153,32 @@ def provenance():
     }
 
 
-def built_from():
-    """上一次 build 實際用了哪些 commit —— 由 bitbake 自己記錄，不是我們推論的。
+def built_from(image_stamp):
+    """建出這顆 image 的那次 bitbake 用了哪些 commit —— 由 bitbake 自己記錄。
 
-    tmp/log/cooker/<machine>/console-latest.log 開頭的 Build Configuration 區塊。
-    這是唯一能回答「證據到底是哪份原始碼建出來的」的權威來源。
+    tmp/log/cooker/<machine>/<戳記>.log 開頭的 Build Configuration 區塊，
+    是唯一能回答「證據到底是哪份原始碼建出來的」的權威來源。
+
+    ⚠️ 不能用 console-latest.log。照 build → testimage → 判定的流程走，
+    testimage 本身也是一次 bitbake 執行，會把 console-latest.log 指到自己身上。
+    拿它當基準，pin 比的是「宣告 vs CT 當時」、CT drift 比的是
+    「CT 當時 vs CT 當時」——後者恆等，等於沒檢查。
+
+    改成挑「戳記不晚於 image 戳記」之中最新的那支：cooker log 的戳記是 bitbake
+    起跑時間，必然早於它產出的 image 戳記，而後來的執行都會晚於它。
     """
-    logs = glob.glob(COOKER_LOG)
-    if not logs:
+    if not image_stamp:
         return None, None
-    log = max(logs, key=os.path.getmtime)
+    cands = []
+    for path in glob.glob(COOKER_LOGS):
+        if os.path.islink(path):          # console-latest.log
+            continue
+        m = STAMP_RE.search(os.path.basename(path))
+        if m and m.group(1) <= image_stamp:
+            cands.append((m.group(1), path))
+    if not cands:
+        return None, None
+    log = max(cands)[1]
     with open(log, encoding="utf-8", errors="replace") as fh:
         head = fh.read(8192)
     used = {}
@@ -267,7 +283,12 @@ def main():
 
     # ---- 新鮮度：證據是不是對應現在這份原始碼 ----
     prov = provenance()
-    used, cooker_log = built_from()
+    # image 與 CVE 報告必須同一批：這兩者的對應關係是整份 manifest 的核心主張
+    img_stamp = items["image"]["image_stamp"] if items["image"] else None
+    cve_stamp = items["cve_report"]["image_stamp"] if items["cve_report"] else None
+    batch_mismatch = bool(img_stamp and cve_stamp and img_stamp != cve_stamp)
+
+    used, cooker_log = built_from(img_stamp)
     drift = []
     patched = []
     if used:
@@ -282,11 +303,6 @@ def main():
             else:
                 patched.append({"repo": repo, "base": declared["commit"],
                                 "head": actual, "commits": extra})
-    # image 與 CVE 報告必須同一批：這兩者的對應關係是整份 manifest 的核心主張
-    img_stamp = items["image"]["image_stamp"] if items["image"] else None
-    cve_stamp = items["cve_report"]["image_stamp"] if items["cve_report"] else None
-    batch_mismatch = bool(img_stamp and cve_stamp and img_stamp != cve_stamp)
-
     # CT 結果是不是這顆 image 跑出來的。
     # ⚠️ kas 的 patches: 會把 patch 做成一顆 commit 疊在 pin 上，layer HEAD 因此
     #    不等於宣告的 pin —— 所以這裡比的是「CT 當時」對「image build 當時」，
@@ -321,7 +337,7 @@ def main():
     if batch_mismatch:
         reasons.append(f"image（{img_stamp}）與 CVE 報告（{cve_stamp}）不是同一批建置")
     if used is None:
-        reasons.append("找不到 cooker log，無法確認證據對應哪份原始碼")
+        reasons.append("找不到建出這顆 image 的 cooker log，無法確認證據對應哪份原始碼")
     if ct_drift:
         reasons.append("CT 結果不是這顆 image 跑出來的："
                        + "、".join(d["repo"] for d in ct_drift)
@@ -381,7 +397,7 @@ def main():
 
     print("\n新鮮度：")
     if used is None:
-        print("  ❌ 找不到 cooker log —— 無法確認證據對應哪份原始碼")
+        print("  ❌ 找不到建出這顆 image 的 cooker log —— 無法確認證據對應哪份原始碼")
     elif drift:
         for d in drift:
             print(f"  ❌ {d['repo']}：宣告 {d['declared'][:12]}…"
