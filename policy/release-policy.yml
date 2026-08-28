@@ -68,7 +68,7 @@ deferred:
 not_applicable:
   - id: factory-provisioning
     why: 序號、裝置憑證、debug lock、雲端註冊都需要量產產線。
-         目前是手工燒錄單片開發板。TPM（SLB9670）硬體已驗證通過，
+         目前是手工燒錄單片開發板。TPM（SLB9672）硬體已驗證通過，
          真要做時不是從零開始。
 
 platform_limitation:
