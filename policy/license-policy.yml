@@ -1,0 +1,62 @@
+# 授權合規規則。依據 docs/CICD_CT.pdf 第 17 頁 License compliance。
+# 分類的理由見 docs/GATES.md。
+version: 1
+
+# 決定：**不設 INCOMPATIBLE_LICENSE**，不從 build 端擋任何授權（2026-08-28）。
+# 閘門抓的是「漂移」——出現沒人看過的授權就擋，而不是預先禁止某個授權。
+# PDF 第 17 頁的 Block 條件寫的是 "unknown license"，不是特定授權。
+
+# 已經逐一看過並接受的個別授權識別碼。
+# ⚠️ 比對的是**拆開後的識別碼**，不是 manifest 裡那整串運算式 ——
+#    "A AND B" 換個組合就變成新字串，比整串會製造大量假警報。
+accepted:
+  - GPL-2.0-only WITH Linux-syscall-note   # kernel 模組；例外條款讓使用者空間不受傳染
+  - GPL-2.0-only
+  - GPL-2.0-or-later
+  - GPL-3.0-only
+  - GPL-3.0-or-later WITH GCC-exception-3.1
+  - LGPL-2.0-only
+  - LGPL-2.0-or-later
+  - LGPL-2.1-only
+  - LGPL-2.1-or-later
+  - AFL-2.1
+  - Apache-2.0
+  - MIT
+  - ISC
+  - Zlib
+  - 0BSD
+  - BSD-1-Clause
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - HPND
+  - HPND-sell-variant
+  - CC-PDDC
+  - Unlicense
+  - WTFPL
+  - bzip2-1.0.6
+  - hdparm
+  - GCR-docs
+
+# 接受，但帶著已知的限制。不擋，每次判定都列出來，並寫進 notice。
+restricted:
+  - id: gpl-3
+    licenses:
+      - GPL-3.0-only
+      - GPL-3.0-or-later
+    why: >
+      GPL-3.0 §6 的 anti-Tivoization 條款要求：把 GPL-3 軟體放進 User Product 時，
+      必須提供讓使用者安裝修改版所需的資訊。這與 CICD_CT.pdf 第 13 頁要求的
+      secure boot + debug lock 直接衝突。
+      現階段沒有 secure boot（CM4 也做不到），所以不衝突；
+      **要鎖裝置的時候必須重新決定。**
+    note: 2026-08-28 決定不排除。目前只有 dosfstools 一個套件受影響，
+          且它是 packagegroup-base-vfat 的軟相依、busybox 已提供 mkfs.vfat。
+
+  - id: gcc-runtime-exception
+    licenses:
+      - GPL-3.0-or-later WITH GCC-exception-3.1
+    why: >
+      libgcc / libstdc++。GCC Runtime Library Exception 明文允許連結而不傳染，
+      這正是該例外存在的目的。
+    note: ⚠️ 若日後決定排除 GPL-3.0，這兩個**必須**留下，
+          否則 INCOMPATIBLE_LICENSE = "GPL-3.0*" 會讓 build 直接失敗。

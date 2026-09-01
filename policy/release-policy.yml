@@ -27,16 +27,13 @@ required:
     what: 每個 layer 的 URL + commit，可重建這顆 image
   - id: secret_scan
     what: gitleaks 掃 kas-panda 與 meta-panda 的完整歷史，判定當下現場執行
+  - id: license_verdict
+    what: 授權合規判定，出現沒分類過的授權即 BLOCK（不預先排除任何授權）
+  - id: license_notice
+    what: 可交付的 THIRD-PARTY-NOTICES.txt，GPL/LGPL 的法律義務
 
 # 該做、還沒做。具名 + owner + 到期日；過期即 BLOCK。
 gaps:
-  - id: license-compliance-policy
-    what: INCOMPATIBLE_LICENSE 白/黑名單 + 可交付的 third-party notice
-    why: GPL/LGPL 隨產品附授權聲明是法律義務，不是選配。
-         Yocto 已產出 license.manifest，缺的是政策與整理。
-    owner: panda
-    expires: 2026-11-30
-
   - id: port-baseline
     what: 開放埠基準線 + hardening 檢查（空密碼、預設帳號、debug 介面）
     why: PDF 第 17 頁 Post-build runtime evidence。CT gate 已有實機管道，

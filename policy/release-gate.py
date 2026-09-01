@@ -29,6 +29,7 @@ IMAGES = os.path.join(DEPLOY, "images", "*")
 DEFAULT_POLICY = os.path.join(REPO, "policy", "release-policy.yml")
 DEFAULT_OUT = os.path.join(DEPLOY, "release")
 CVE_GATE = os.path.join(REPO, "policy", "cve-gate.py")
+LICENSE_GATE = os.path.join(REPO, "policy", "license-gate.py")
 STAMP_RE = re.compile(r"(\d{14})")
 COOKER_LOGS = os.path.join(REPO, "build-container", "tmp", "log", "cooker", "*",
                            "*.log")
@@ -90,6 +91,21 @@ def run_cve_gate(out_dir):
         return None, None, proc.stdout + proc.stderr
     with open(verdict_path, encoding="utf-8") as fh:
         return json.load(fh), verdict_path, proc.stdout
+
+
+def run_license_gate(out_dir):
+    """跑授權合規判定，拿回 verdict 與 notice 的路徑。
+
+    與 CVE 同樣的形狀：現場跑，不讀舊的判定 —— 兩個 gate 必須看同一份現況。
+    """
+    verdict_path = os.path.join(out_dir, "license-verdict.json")
+    subprocess.run(
+        [sys.executable, LICENSE_GATE, "--out", out_dir, "--json", verdict_path],
+        capture_output=True, text=True)
+    if not os.path.exists(verdict_path):
+        return None, None
+    with open(verdict_path, encoding="utf-8") as fh:
+        return json.load(fh), verdict_path
 
 
 def run_secret_scan(out_dir):
@@ -303,6 +319,7 @@ def main():
     verdict, verdict_path, cve_out = run_cve_gate(args.out)
     ct = ct_summary(ct_path)
     secrets = run_secret_scan(args.out)
+    lic_verdict, lic_verdict_path = run_license_gate(args.out)
 
     items = {
         "image": evidence(image),
@@ -312,6 +329,9 @@ def main():
         "license_manifest": evidence(lic),
         "ct_report": evidence(ct_path),
         "secret_scan": evidence(secrets["report"]) if secrets else None,
+        "license_verdict": evidence(lic_verdict_path),
+        "license_notice": evidence(
+            os.path.join(args.out, "THIRD-PARTY-NOTICES.txt")),
     }
 
     # ---- 必要證據檢查 ----
@@ -326,6 +346,8 @@ def main():
             ok = verdict is not None
         elif rid == "secret_scan":
             ok = secrets is not None
+        elif rid == "license_verdict":
+            ok = lic_verdict is not None
         else:
             ok = items.get(rid) is not None
         if not ok:
@@ -390,6 +412,8 @@ def main():
         reasons.append("CT 有失敗案例" if ct else "沒有 CT 報告")
     if secrets and not secrets["clean"]:
         reasons.append(f"secret scan 找到 {len(secrets['findings'])} 筆疑似洩漏的憑證")
+    if lic_verdict and lic_verdict.get("verdict") != "PASS":
+        reasons.append(f"授權合規判定為 {lic_verdict['verdict']}：{lic_verdict['reason']}")
     if expired:
         reasons.append(f"{len(expired)} 項缺口已過期")
     if drift:
@@ -436,6 +460,9 @@ def main():
             "ct": ct,
             "secret_scan": {k: secrets[k] for k in ("scanned", "findings", "clean")}
                            if secrets else None,
+            "license": {k: lic_verdict[k] for k in
+                        ("verdict", "reason", "components", "unknown", "restricted")}
+                       if lic_verdict else None,
         },
         "gaps": gaps,
         "deferred": policy.get("deferred", []),
@@ -495,6 +522,13 @@ def main():
         for f in secrets["findings"]:
             print(f"    {f['repo']}  {f['RuleID']}  {f['File']}:{f['StartLine']}"
                   f"  commit {str(f['Commit'])[:12]}")
+
+    if lic_verdict:
+        r = lic_verdict.get("restricted") or []
+        print(f"\n授權合規：{lic_verdict['verdict']} —— {lic_verdict['reason']}"
+              f"（{lic_verdict['components']} 個元件）")
+        for g in r:
+            print(f"    ⚠️  {g['id']}：{'、'.join(g['packages'][:6])}")
 
     print(f"\n閘門：CVE {manifest['gates']['cve']}"
           f"    CT {ct['passed']}/{ct['passed'] + ct['failed']}" if ct else "")
