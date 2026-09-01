@@ -1,0 +1,21 @@
+#!/bin/sh
+# 擋在 commit 之前：掃 staged 的內容，不讓憑證進入歷史。
+# 進了歷史就只能改寫歷史，push 到 public 之後連改寫都救不回來。
+#
+# 安裝（兩個 repo 各一次，meta-panda 用相對路徑指回來）：
+#   git -C ~/kas-panda            config core.hooksPath policy/hooks
+#   git -C ~/kas-panda/meta-panda config core.hooksPath ../policy/hooks
+#
+# 真的要跳過：git commit --no-verify（請確定你知道自己在做什麼）
+
+command -v gitleaks >/dev/null 2>&1 || {
+    echo "⚠️  找不到 gitleaks，這次 commit 沒有掃 —— sudo apt install gitleaks"
+    exit 0
+}
+
+gitleaks protect --staged --redact --no-banner --verbose || {
+    echo
+    echo "❌ staged 內容裡有疑似憑證，commit 已擋下。"
+    echo "   確定是誤判的話，在 .gitleaks.toml 的 allowlist 加一條並寫理由。"
+    exit 1
+}

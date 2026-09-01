@@ -16,7 +16,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import sys
 
 import yaml
@@ -88,6 +90,53 @@ def run_cve_gate(out_dir):
         return None, None, proc.stdout + proc.stderr
     with open(verdict_path, encoding="utf-8") as fh:
         return json.load(fh), verdict_path, proc.stdout
+
+
+def run_secret_scan(out_dir):
+    """對兩個 repo 掃完整歷史找洩漏的憑證。
+
+    現場掃而不是讀舊報告 —— 掃一次不到 0.1 秒，沒有「報告過期」這個問題。
+    找不到 gitleaks 時回 None，呼叫端據此保留缺口，不要當成掃過了。
+
+    ⚠️ gitleaks 的原始報告帶著那顆密鑰本身。直接收進 release bundle 等於把洩漏的
+    東西再抄一份，所以原始報告寫到暫存檔，只有脫敏後的中繼資料留下來。
+    """
+    if shutil.which("gitleaks") is None:
+        return None
+
+    findings, scanned = [], []
+    keep = ("RuleID", "Description", "File", "StartLine", "Commit", "Author", "Date")
+    for name, path in (("kas-panda", REPO),
+                       ("meta-panda", os.path.join(REPO, "meta-panda"))):
+        if not os.path.isdir(os.path.join(path, ".git")):
+            continue
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            raw = tmp.name
+        try:
+            subprocess.run(
+                ["gitleaks", "detect", "--source", path, "--report-format", "json",
+                 "--report-path", raw, "--no-banner"],
+                capture_output=True, text=True)
+            with open(raw, encoding="utf-8") as fh:
+                data = json.load(fh) or []
+        except (json.JSONDecodeError, OSError):
+            data = []
+        finally:
+            os.unlink(raw)
+        commits = subprocess.run(["git", "-C", path, "rev-list", "--count", "HEAD"],
+                                 capture_output=True, text=True).stdout.strip()
+        scanned.append({"repo": name, "commits": commits})
+        for f in data:
+            item = {k: f.get(k) for k in keep}
+            item["repo"] = name
+            findings.append(item)
+
+    result = {"scanned": scanned, "findings": findings, "clean": not findings}
+    path = os.path.join(out_dir, "secret-scan.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(result, fh, ensure_ascii=False, indent=2)
+    result["report"] = path
+    return result
 
 
 def ct_summary(path):
@@ -253,6 +302,7 @@ def main():
 
     verdict, verdict_path, cve_out = run_cve_gate(args.out)
     ct = ct_summary(ct_path)
+    secrets = run_secret_scan(args.out)
 
     items = {
         "image": evidence(image),
@@ -261,6 +311,7 @@ def main():
         "cve_verdict": evidence(verdict_path),
         "license_manifest": evidence(lic),
         "ct_report": evidence(ct_path),
+        "secret_scan": evidence(secrets["report"]) if secrets else None,
     }
 
     # ---- 必要證據檢查 ----
@@ -273,12 +324,20 @@ def main():
             ok = True
         elif rid == "cve_verdict":
             ok = verdict is not None
+        elif rid == "secret_scan":
+            ok = secrets is not None
         else:
             ok = items.get(rid) is not None
         if not ok:
             missing.append(req)
 
     gaps = parse_gaps(policy.get("gaps", []), today)
+    if secrets is None:
+        gaps.append({
+            "id": "secret-scan-not-run", "what": "gitleaks 未安裝，這次沒有掃",
+            "why": "找不到工具就保留缺口，不要當成掃過了",
+            "owner": "panda", "expires": "-", "expired": False, "days_left": 0,
+        })
     expired = [g for g in gaps if g["expired"]]
 
     # ---- 新鮮度：證據是不是對應現在這份原始碼 ----
@@ -329,6 +388,8 @@ def main():
         reasons.append(f"CVE 判定為 {verdict.get('verdict') if verdict else '無法取得'}")
     if not ct_ok:
         reasons.append("CT 有失敗案例" if ct else "沒有 CT 報告")
+    if secrets and not secrets["clean"]:
+        reasons.append(f"secret scan 找到 {len(secrets['findings'])} 筆疑似洩漏的憑證")
     if expired:
         reasons.append(f"{len(expired)} 項缺口已過期")
     if drift:
@@ -373,6 +434,8 @@ def main():
             "cve": verdict.get("verdict") if verdict else None,
             "cve_counts": verdict.get("counts") if verdict else None,
             "ct": ct,
+            "secret_scan": {k: secrets[k] for k in ("scanned", "findings", "clean")}
+                           if secrets else None,
         },
         "gaps": gaps,
         "deferred": policy.get("deferred", []),
@@ -422,6 +485,16 @@ def main():
     if not manifest["same_build"]:
         print(f"\n⚠️  證據來自 {len(stamps)} 個不同的建置時間戳：{', '.join(stamps)}")
         print("   （sstate 命中的 task 不會重新產生檔案，內容相同但檔名停在上一次）")
+
+    if secrets is None:
+        print("\n⚠️  secret scan 沒有執行 —— 找不到 gitleaks（`sudo apt install gitleaks`）")
+    else:
+        repos = "、".join(f"{x['repo']} {x['commits']} commits" for x in secrets["scanned"])
+        mark = "✅ 乾淨" if secrets["clean"] else f"❌ {len(secrets['findings'])} 筆"
+        print(f"\nsecret scan（完整歷史）：{mark}    {repos}")
+        for f in secrets["findings"]:
+            print(f"    {f['repo']}  {f['RuleID']}  {f['File']}:{f['StartLine']}"
+                  f"  commit {str(f['Commit'])[:12]}")
 
     print(f"\n閘門：CVE {manifest['gates']['cve']}"
           f"    CT {ct['passed']}/{ct['passed'] + ct['failed']}" if ct else "")

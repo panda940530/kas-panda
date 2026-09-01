@@ -25,6 +25,8 @@ required:
     what: image 裡每個套件的授權清單
   - id: source_provenance
     what: 每個 layer 的 URL + commit，可重建這顆 image
+  - id: secret_scan
+    what: gitleaks 掃 kas-panda 與 meta-panda 的完整歷史，判定當下現場執行
 
 # 該做、還沒做。具名 + owner + 到期日；過期即 BLOCK。
 gaps:
@@ -32,13 +34,6 @@ gaps:
     what: INCOMPATIBLE_LICENSE 白/黑名單 + 可交付的 third-party notice
     why: GPL/LGPL 隨產品附授權聲明是法律義務，不是選配。
          Yocto 已產出 license.manifest，缺的是政策與整理。
-    owner: panda
-    expires: 2026-11-30
-
-  - id: secret-scan
-    what: Gitleaks 掃 kas-panda 與 meta-panda 的完整歷史，接 pre-commit + CI
-    why: PDF 第 6 頁 ZONE 1 明列。已有實例：.env 存 sudo 密碼、權限 0644、
-         原本未被 gitignore 排除。repo 現為 public，密碼一旦 push 就等同外洩。
     owner: panda
     expires: 2026-11-30
 
