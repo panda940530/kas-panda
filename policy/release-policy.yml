@@ -31,15 +31,15 @@ required:
     what: 授權合規判定，出現沒分類過的授權即 BLOCK（不預先排除任何授權）
   - id: license_notice
     what: 可交付的 THIRD-PARTY-NOTICES.txt，GPL/LGPL 的法律義務
+  - id: hardening_baseline
+    what: 板端執行期基準線（開放埠、可登入帳號、空密碼），CT 斷言現況與它一致
 
 # 該做、還沒做。具名 + owner + 到期日；過期即 BLOCK。
-gaps:
-  - id: port-baseline
-    what: 開放埠基準線 + hardening 檢查（空密碼、預設帳號、debug 介面）
-    why: PDF 第 17 頁 Post-build runtime evidence。CT gate 已有實機管道，
-         加兩個 testimage 測試即可，不需要新工具。
-    owner: panda
-    expires: 2026-11-30
+# 目前是空的 —— 三項原始缺口（secret scan / license / port baseline）都已關閉。
+# gate 仍會在執行時動態加入兩種缺口：
+#   hardening-ship-blocking   基準線上標記 ship_blocking 的項目（擋 RC）
+#   secret-scan-not-run       找不到 gitleaks（不當成掃過了）
+gaps: []
 
 # 判定不看，但理由留著，避免日後被當成漏做
 deferred:

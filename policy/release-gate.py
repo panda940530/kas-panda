@@ -30,6 +30,9 @@ DEFAULT_POLICY = os.path.join(REPO, "policy", "release-policy.yml")
 DEFAULT_OUT = os.path.join(DEPLOY, "release")
 CVE_GATE = os.path.join(REPO, "policy", "cve-gate.py")
 LICENSE_GATE = os.path.join(REPO, "policy", "license-gate.py")
+HARDENING_BASELINE = os.path.join(
+    REPO, "meta-panda", "lib", "oeqa", "runtime", "cases",
+    "hardening-baseline.json")
 STAMP_RE = re.compile(r"(\d{14})")
 COOKER_LOGS = os.path.join(REPO, "build-container", "tmp", "log", "cooker", "*",
                            "*.log")
@@ -91,6 +94,29 @@ def run_cve_gate(out_dir):
         return None, None, proc.stdout + proc.stderr
     with open(verdict_path, encoding="utf-8") as fh:
         return json.load(fh), verdict_path, proc.stdout
+
+
+def hardening_summary(path):
+    """讀執行期基準線，數出「出貨變體必須改掉」的項目。
+
+    CT 斷言的是「現況 == 基準線」（所以今天會過）；這裡讀的是基準線上的註記，
+    回答另一個問題：這顆夠不夠格出貨。兩件事分開，CT 才不會變成永遠紅的燈。
+    """
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        base = json.load(fh)
+    blocking = []
+    for section in ("tcp", "udp", "login_accounts", "empty_password"):
+        for key, meta in (base.get(section) or {}).items():
+            if isinstance(meta, dict) and meta.get("ship_blocking"):
+                blocking.append({"section": section, "item": key,
+                                 "why": " ".join((meta.get("why") or "").split())})
+    return {"captured": base.get("captured"),
+            "ship_blocking": blocking,
+            "services_to_remove": {k: v for k, v in
+                                   (base.get("services_to_remove") or {}).items()
+                                   if not k.startswith("_")}}
 
 
 def run_license_gate(out_dir):
@@ -320,6 +346,7 @@ def main():
     ct = ct_summary(ct_path)
     secrets = run_secret_scan(args.out)
     lic_verdict, lic_verdict_path = run_license_gate(args.out)
+    hardening = hardening_summary(HARDENING_BASELINE)
 
     items = {
         "image": evidence(image),
@@ -332,11 +359,12 @@ def main():
         "license_verdict": evidence(lic_verdict_path),
         "license_notice": evidence(
             os.path.join(args.out, "THIRD-PARTY-NOTICES.txt")),
+        "hardening_baseline": evidence(HARDENING_BASELINE),
     }
 
     # ---- 必要證據檢查 ----
     missing = []
-    for req in policy["required"]:
+    for req in policy.get("required") or []:
         rid = req["id"]
         if rid == "image_hash":
             ok = items["image"] is not None
@@ -353,7 +381,17 @@ def main():
         if not ok:
             missing.append(req)
 
-    gaps = parse_gaps(policy.get("gaps", []), today)
+    gaps = parse_gaps(policy.get("gaps") or [], today)
+    if hardening and hardening["ship_blocking"]:
+        n = len(hardening["ship_blocking"])
+        gaps.append({
+            "id": "hardening-ship-blocking",
+            "what": f"{n} 項執行期設定在出貨變體必須改掉"
+                    f"（{'、'.join(b['item'] for b in hardening['ship_blocking'])}）",
+            "why": "基準線上標記 ship_blocking 的項目。CT 斷言的是現況與基準線一致，"
+                   "夠不夠格出貨在這裡判。",
+            "owner": "panda", "expires": "-", "expired": False, "days_left": 0,
+        })
     if secrets is None:
         gaps.append({
             "id": "secret-scan-not-run", "what": "gitleaks 未安裝，這次沒有掃",
@@ -460,14 +498,15 @@ def main():
             "ct": ct,
             "secret_scan": {k: secrets[k] for k in ("scanned", "findings", "clean")}
                            if secrets else None,
+            "hardening": hardening,
             "license": {k: lic_verdict[k] for k in
                         ("verdict", "reason", "components", "unknown", "restricted")}
                        if lic_verdict else None,
         },
         "gaps": gaps,
-        "deferred": policy.get("deferred", []),
-        "not_applicable": policy.get("not_applicable", []),
-        "platform_limitation": policy.get("platform_limitation", []),
+        "deferred": policy.get("deferred") or [],
+        "not_applicable": policy.get("not_applicable") or [],
+        "platform_limitation": policy.get("platform_limitation") or [],
     }
 
     out_file = os.path.join(args.out, "release-manifest.json")
@@ -523,6 +562,15 @@ def main():
             print(f"    {f['repo']}  {f['RuleID']}  {f['File']}:{f['StartLine']}"
                   f"  commit {str(f['Commit'])[:12]}")
 
+    if hardening:
+        print(f"\n執行期基準線（{hardening['captured']}）：")
+        for b in hardening["ship_blocking"]:
+            print(f"    ⚠️  {b['section']}/{b['item']} —— 出貨變體必須改掉")
+        rm = hardening["services_to_remove"]
+        if rm:
+            print("    用不到但仍在跑的服務：" +
+                  "、".join(f"{k}（{v}）" for k, v in rm.items()))
+
     if lic_verdict:
         r = lic_verdict.get("restricted") or []
         print(f"\n授權合規：{lic_verdict['verdict']} —— {lic_verdict['reason']}"
@@ -536,7 +584,10 @@ def main():
     if gaps:
         print("\n未關閉的缺口（擋 RC，不擋 nightly）：")
         for g in gaps:
-            mark = "❌ 已過期" if g["expired"] else f"{g['days_left']} 天後到期"
+            # 動態加入的缺口沒有到期日（它們一修好就自己消失，不需要期限催）
+            mark = ("❌ 已過期" if g["expired"]
+                    else "—" if g["expires"] == "-"
+                    else f"{g['days_left']} 天後到期")
             print(f"  ⬜ {g['id']:28s} owner={g['owner']}  {mark}")
             print(f"     {g['what']}")
 

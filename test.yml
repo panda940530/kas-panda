@@ -28,7 +28,7 @@ local_conf_header:
     TEST_SERVER_IP = "172.24.73.233"
     # rtc_panda / tpm_panda 來自 meta-panda/lib/oeqa/runtime/cases/
     # ⚠️ 後綴 _panda 是為了避開 oe-core 既有的 rtc.py（模組名不能重複）
-    TEST_SUITES = "ping ssh scp date df parselogs rtc_panda tpm_panda"
+    TEST_SUITES = "ping ssh scp date df parselogs rtc_panda tpm_panda hardening_panda"
     # eltt2 = Infineon 的 TPM 測試工具，直接對 /dev/tpm0 下 TPM 2.0 命令。
     # 只在 CT 時需要，不是產品功能，所以裝在這裡而不是 panda.conf。
     IMAGE_INSTALL:append = " eltt2" 
