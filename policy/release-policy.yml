@@ -1,5 +1,5 @@
 # Release gate 規則。依據 docs/CICD_CT.pdf 第 16、17 頁。
-# 證據分類的理由見 docs/NOTES.md §9。
+# 證據分類的理由見 docs/GATES.md §7。
 version: 1
 
 # 促銷頻道（PDF 第 16 頁 Promote nightly / RC channel）：

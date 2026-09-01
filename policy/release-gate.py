@@ -6,7 +6,7 @@
   exit 1 = BLOCK    必要證據缺漏，或 CVE / CT 沒過
   exit 2 = nightly  必要證據齊全，但仍有未關閉的缺口
 
-設計依據見 docs/NOTES.md §9。
+設計依據見 docs/GATES.md §7。
 """
 
 import argparse

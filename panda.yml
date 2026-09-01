@@ -32,7 +32,7 @@ repos:
   meta-panda:
     url: https://github.com/panda940530/meta-panda.git
     branch: master
-    commit: 3af82643379b75ea939804e2f3040a7abf25dbca
+    commit: 4317148a1864ef34b8dbea0fc04bbe05666c92c5
   
 local_conf_header:
   devel: |
