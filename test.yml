@@ -17,16 +17,22 @@ repos:
         repo: kas-panda
         path: patches/meta-raspberrypi/0001-parselogs-rpi-drop-removed-oeqa-api.patch
 
+# 兩個 IP 從本機 .env 讀，不寫死在版控裡（板子 IP 每次開機都變，docs/BOARD.md §5）。
+# 這裡只宣告「要轉發」，不給預設值 —— 過期的預設值會讓測試連進現在持有那個位址的
+# 別台機器，而該網段有 IP 衝突紀錄。沒設就讓它明確失敗。
+#
+# ⚠️ 光有 env: 不夠：kas-container 不轉發任意主機環境變數，還要靠
+#    --runtime-args "-e VAR=值" 把值送進容器（env-container.sh 的 wrapper 自動補）
+env:
+  TEST_TARGET_IP:
+  TEST_SERVER_IP:
+
 local_conf_header:
   # IMAGE_CLASSES  testimage 是 recipe 層級的 class，用 INHERIT 會掛到每個 recipe
-  # TEST_TARGET_IP ⚠️ DHCP 不綁 MAC，每次開機都要改（docs/BOARD.md §5）
-  # TEST_SERVER_IP 板子在 NAT 後面連不回來，但不填會 bb.fatal
   # TEST_SUITES    _panda 後綴是為了避開 oe-core 的同名模組（docs/GATES.md §3）
   # eltt2          TPM 測試工具，只有 CT 需要，所以不放 panda.conf
   testimage: |
     IMAGE_CLASSES += "testimage"
     TEST_TARGET = "simpleremote"
-    TEST_TARGET_IP = "192.168.236.41"
-    TEST_SERVER_IP = "172.24.73.233"
     TEST_SUITES = "ping ssh scp date df parselogs rtc_panda tpm_panda hardening_panda"
     IMAGE_INSTALL:append = " eltt2"
