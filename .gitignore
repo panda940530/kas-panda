@@ -24,3 +24,6 @@
 /docs/
 
 /CLAUDE.md
+
+# Python 執行時產生的
+__pycache__/
